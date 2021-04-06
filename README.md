@@ -36,13 +36,13 @@ Include the `dist/style.css` file on your page to apply the styling. You can use
 If you're not using NPM, you can include the required files into your page manually from a CDN. Don't forget to include Vue as well. For example:
 
 ```html
-<script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.5.13/vue.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@voerro/vue-tagsinput@2.2.0/dist/voerro-vue-tagsinput.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.6.12/vue.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@voerro/vue-tagsinput@2.7.1/dist/voerro-vue-tagsinput.js"></script>
 
 <script>
     new Vue({
         el: '#app',
-        components: { "v-tags-input": VoerroTagsInput },
+        components: { "tags-input": VoerroTagsInput },
     });
 </script>
 ```
@@ -50,7 +50,7 @@ If you're not using NPM, you can include the required files into your page manua
 Include the CSS file on your page to apply the styling. Read the `Styling` section to learn how to customize the appearance.
 
 ```
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@voerro/vue-tagsinput@2.2.0/dist/style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@voerro/vue-tagsinput@2.7.1/dist/style.css">
 ```
 
 **IMPORTANT:** Always grab the latest versions of the package from [JSDELIVR](https://www.jsdelivr.com/package/npm/@voerro/vue-tagsinput?path=dist), the ones provided in the examples above might be outdated. Same goes for Vue.js.
@@ -81,9 +81,7 @@ Include the CSS file on your page to apply the styling. Read the `Styling` secti
 
 `element-id` will be applied to `id` and `name` attributes of the hidden input that contains the list of the selected tags as its value. Optionally you can also use the `v-model` directive to bind a variable to the array of selected tags.
 
-`existing-tags` is the list of the existing on your website tags. Include it even if you're not using typeahead.
-
-Remove the `typeahead` property to disable this functionality.
+`existing-tags` is the list of all the existing/valid tags. Include it even if you're not using typeahead.
 
 #### Setting Selected Tags Programmatically
 
@@ -91,7 +89,7 @@ If you need to programmatically (manually) set or change the list of selected ta
 
 For example, the variable name is `selectedTags`:
 ```html
-<tags-input element-id="tags" 
+<tags-input element-id="tags"
     v-model="selectedTags"></tags-input>
 ```
 
@@ -131,12 +129,44 @@ new Vue({
 });
 ```
 
+#### Existing And Selected Tags Collections
+
+As you've noticed in the examples above, an item from a tag collection looks like this:
+
+```
+{ key: 'web-development', value: 'Web Development' }
+```
+
+In reality, you're not limited to what your tag objects should look like. You can name your fields however you want, just don't forget to tell the component the correct field names. To customize the `key` field name, set the `id-field` prop. To customize the `value` field name, set the `text-field` prop. For example:
+
+```html
+<tags-input element-id="tags"
+    v-model="selectedTags"
+    :existing-tags="[
+        { id: 1, name: 'Web Development' },
+        { id: 2, name: 'PHP' },
+        { id: 3, name: 'JavaScript' },
+    ]"
+    id-field="id"
+    text-field="name"></tags-input>
+```
+
+Note that the selected tags collection should have the same `id` and `text` field names as the existing tags collection.
+
+Your tag options can also have other (extra) fields, for example when you fetch data from your DB and pass it directly to the component as is. This is perfectly fine and won't create any problems.
+
 #### All Available Props
 
 Prop | Type | Default | Description
 --- | --- | --- | ---
-elementId | String | - | id & name for the hidden input.
+element-id | String | - | name for the hidden form input with the value.
+input-id | String | - | id & name for the visible input.
+disabled | Boolean | false | Disable the element. You won't be able to add new tags and remove the existing ones.
 existing-tags | Array | [] | An array with existing tags in the following format: `[{ key: 'id-or-slug-of-the-tag', value: 'Tag\'s text representation' }, {...}, ...]`
+id-field | String | 'key' | The name of the "id" field in your existing and selected tags collections. The actual value of each tag.
+text-field | String | 'value' | The name of the "text" field in your existing and selected tags collections. This is what you see on the tag badges. Used when searching for a tag (typeahead).
+display-field | String | null | The name of the "display" field in your existing and selected tags collections. Overrides your tag's "text" field to display additional data in dropdown lists.
+value-fields | String | null | A comma-separated list of fields to be included in the hidden inputs' values. These make up data that will be returned with the form as FormData. `null` means "include all fields".
 typeahead | Boolean | false | Whether the typeahead (autocomplete) functionality should be enabled.
 typeahead-style | String | 'badges' | The autocomplete prompt style. Possible values: `badges`, `dropdown`.
 typeahead-max-results | Number | 0 | Maximum number of typeahead results to be shown. 0 - unlimited.
@@ -146,6 +176,7 @@ typeahead-show-on-focus | Boolean | true | Show typeahead on input field focus.
 typeahead-hide-discard | Boolean | false | Hides the 'Discard Search Results' option.
 placeholder | String | 'Add a tag' | The placeholder of the tag input.
 typeahead-url | String | '' | If the option is set, the URL will be used for AJAX search/typeahead. Use the `:search` wildcard wherever you want the search query to go, for example `http://example.com/tags?search=:search`. The returned data must be in the `existing-tags` format.
+typeahead-callback | Function | null | An optional callback to implement custom search/typeahead functionality. Accepts search query as a parameter. For example, this is useful when you want to implement custom AJAX calls with headers and other options. Must return a Promise that resolves with data in the `existing-tags` format.
 discard-search-text | String | 'Discard Search Results' | The 'Discard Search Results' button text.
 limit | Number | 0 | Limit the number of tags that can be chosen. 0 = no limit.
 hide-input-on-limit | Boolean | false | Hide the input field when the tags limit is reached.
@@ -213,7 +244,7 @@ new Vue({
         onTagsUpdated() {
             console.log('Tags updated');
         },
-        
+
         onLimitReached() {
             console.log('Max Reached');
         },
@@ -244,17 +275,23 @@ new Vue({
 
 ## Data
 
+### v-model
+
 You can bind the array of selected tags to a variable via `v-model`. A tag object within the array looks like this:
 
 ```
 { key: 'web-development', value: 'Web Development' }
 ```
 
-`key` is whatever unique key you use for the tags in your project. It could be a unique slug, it could be a unique numeric id, it could be something else. `value` is the text representation of a tag.
+`key` is whatever unique key you use for the tags in your project. It could be a unique slug, it could be a unique numeric id, it could be something else. `value` is the text representation of a tag. If you've set custom field names via `id-field` and `text-field` props - use those instead of `key` and `value`.
 
-There's also a hidden text input, which has the stringified version of the array of selected tags as its value. The `name` and `id` of the input equal to whatever you set to the `element-id` prop.
+### Form Data
 
-The tags that don't exist in the `existing-tags` array will have its `key` equal to an empty string `''`. In your backend you can consider these tags as `to be created`.
+There's also a hidden text input for each selected tag so that you could easily convert that to FormData. The `name` and `id` of the input equal to whatever you set to the `element-id` prop.
+
+The value of each input equals to a stringified version of a tag object. Note that the tags that don't exist in the `existing-tags` array will have its `key` equal to an empty string `''`. In your backend you can consider these tags as `to be created`.
+
+If you don't need whole tag objects, you can specify which tag fields you want to be returned with the `value-fields` prop. Provide a comma-separated list of fields or a single field name. If you specify a single field, you'll get that field values alone instead of stringified objects.
 
 ## Styling
 
@@ -265,6 +302,22 @@ Certain classes/styles can be overridden via component props on a per instance b
 Prop | Default class | Area
 --- | --- | ---
 wrapper-class | tags-input-wrapper-default | Outer appearance of the input - a wrapper providing a border and padding around the selected tags. If you're using CSS frameworks, you could use the frameworks' native classes, e.g. `form-control` for Bootstrap or `input` for Bulma.
+
+You can also customize selected tags' badges using the `selected-tag` slot, for example like this:
+
+```html
+<tags-input ...>
+    <template v-slot:selected-tag="{ tag, index, removeTag }">
+        <span v-html="tag.value"></span>
+
+        <a v-show="!disabled"
+            href="#"
+            class="tags-input-remove"
+            @click.prevent="removeTag(index)"></a>
+    </template>
+</tags-input>
+```
+
 
 ## Using Typeahead (Autocomplete)
 
@@ -280,7 +333,23 @@ See the `v1` branch for details.
 
 A pretty serious bug ([#53](../../issues/53)) was fixed in `v2.0.0`. The data format for the `existing-tags` prop and the `v-model` directive has been changed. You can find the new format in this documentation, see above.
 
+#### v2.3.0 -> v2.4.0
+
+Multiple hidden fields instead of one, so that your backend treats the selected tags as an array.
+
 ## Changelog
+
+#### v.2.4.0
+
+- New options: `id-field` and `text-field`
+- **IMPORTANT**: multiple hidden fields instead of one, so that your backend treats the selected tags as an array
+- New option: `value-fields`
+
+#### v.2.3.0
+
+- Individual selected tags are now wrapped in a `<slot>`
+- Fix: existingTags prop modified directly ([#94](../../issues/94))
+- New option: `disabled` (disable the element) ([#92](../../issues/92))
 
 #### v.2.2.0
 
@@ -297,7 +366,7 @@ A pretty serious bug ([#53](../../issues/53)) was fixed in `v2.0.0`. The data fo
 - New option: `typeahead-hide-discard`
 - New option: `add-tags-on-space`
 - New event: `change`
-- "Discard Search Results" string (option text) is now customizable 
+- "Discard Search Results" string (option text) is now customizable
 - Fixed a minor bug with removing tags on backspace press
 
 #### v.2.2.0

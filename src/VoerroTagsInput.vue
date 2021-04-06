@@ -3,23 +3,37 @@
         <div :class="{
             [wrapperClass + ' tags-input']: true,
             'active': isActive,
+            'disabled': disabled,
         }">
-            <span class="tags-input-badge tags-input-badge-pill tags-input-badge-selected-default"
-                v-for="(tag, index) in tags"
+            <span v-for="(tag, index) in tags"
                 :key="index"
+                class="tags-input-badge tags-input-badge-pill tags-input-badge-selected-default"
+                :class="{ 'disabled': disabled }"
             >
-                <span v-html="tag.value"></span>
+                <slot name="selected-tag"
+                    :tag="tag"
+                    :index="index"
+                    :removeTag="removeTag"
+                >
+                    <span v-html="tag[textField]"></span>
 
-                <a href="#"
-                    class="tags-input-remove"
-                    @click.prevent="removeTag(index)"></a>
+                    <a v-show="!disabled"
+                        href="#"
+                        class="tags-input-remove"
+                        @click.prevent="removeTag(index)"></a>
+                </slot>
             </span>
 
             <input type="text"
                 ref="taginput"
+                :id="inputId"
+                :name="inputId"
                 :placeholder="placeholder"
-                v-model="input"
+                :value="input"
+                @input="e => input = e.target.value"
                 v-show="!hideInputField"
+                @compositionstart="composing=true"
+                @compositionend="composing=false"
                 @keydown.enter.prevent="tagFromInput(false)"
                 @keydown.8="removeLastTag"
                 @keydown.down="nextSearchResult"
@@ -32,22 +46,28 @@
                 @blur="onBlur"
                 @value="tags">
 
-            <input type="hidden" v-if="elementId"
-                :name="elementId"
-                :id="elementId"
-                v-model="hiddenInput">
+            <div style="display: none;" v-if="elementId">
+                <input v-for="(tag, index) in tags"
+                    :key="index"
+                    type="hidden"
+                    :name="`${elementId}[]`"
+                    :value="hiddenInputValue(tag)">
+            </div>
         </div>
 
         <!-- Typeahead/Autocomplete -->
         <div v-show="searchResults.length">
-            <p v-if="typeaheadStyle === 'badges'" :class="`typeahead-${typeaheadStyle}`">
-                <span v-if="!typeaheadHideDiscard" class="tags-input-badge typeahead-hide-btn tags-input-typeahead-item-default"
+            <p v-if="typeaheadStyle === 'badges'"
+                :class="`typeahead-${typeaheadStyle}`"
+            >
+                <span v-if="!typeaheadHideDiscard"
+                    class="tags-input-badge typeahead-hide-btn tags-input-typeahead-item-default"
                     @click.prevent="clearSearchResults(true)"
                     v-text="discardSearchText"></span>
 
                 <span v-for="(tag, index) in searchResults"
                     :key="index"
-                    v-html="tag.value"
+                    v-html="tag[textField]"
                     @mouseover="searchSelection = index"
                     @mousedown.prevent="tagFromSearchOnClick(tag)"
                     class="tags-input-badge"
@@ -57,20 +77,23 @@
                     }"></span>
             </p>
 
-            <ul v-else-if="typeaheadStyle === 'dropdown'" :class="`typeahead-${typeaheadStyle}`">
-                <li v-if="!typeaheadHideDiscard" class="tags-input-typeahead-item-default typeahead-hide-btn"
+            <ul v-else-if="typeaheadStyle === 'dropdown'"
+                :class="`typeahead-${typeaheadStyle}`"
+            >
+                <li v-if="!typeaheadHideDiscard"
+                    class="tags-input-typeahead-item-default typeahead-hide-btn"
                     @click.prevent="clearSearchResults(true)"
                     v-text="discardSearchText"></li>
 
                 <li v-for="(tag, index) in searchResults"
-                :key="index"
-                v-html="tag.value"
-                @mouseover="searchSelection = index"
-                @mousedown.prevent="tagFromSearchOnClick(tag)"
-                v-bind:class="{
-                    'tags-input-typeahead-item-default': index != searchSelection,
-                    'tags-input-typeahead-item-highlighted-default': index == searchSelection
-                }"></li>
+                    :key="index"
+                    v-html="getDisplayField(tag)"
+                    @mouseover="searchSelection = index"
+                    @mousedown.prevent="tagFromSearchOnClick(tag)"
+                    v-bind:class="{
+                        'tags-input-typeahead-item-default': index != searchSelection,
+                        'tags-input-typeahead-item-highlighted-default': index == searchSelection
+                    }"></li>
             </ul>
         </div>
     </div>
@@ -80,6 +103,8 @@
 export default {
     props: {
         elementId: String,
+
+        inputId: String,
 
         existingTags: {
             type: Array,
@@ -93,6 +118,31 @@ export default {
             default: () => {
                 return [];
             }
+        },
+
+        idField: {
+            type: String,
+            default: 'key',
+        },
+
+        textField: {
+            type: String,
+            default: 'value',
+        },
+
+        displayField: {
+          type: String,
+          default: null,
+        },
+
+        valueFields: {
+            type: String,
+            default: null,
+        },
+
+        disabled: {
+            type: Boolean,
+            default: false
         },
 
         typeahead: {
@@ -133,6 +183,11 @@ export default {
         typeaheadUrl: {
             type: String,
             default: ''
+        },
+
+        typeaheadCallback: {
+            type: Function,
+            default: null
         },
 
         placeholder: {
@@ -231,10 +286,13 @@ export default {
             selectedTag: -1,
 
             isActive: false,
+            composing: false,
         };
     },
 
     created () {
+        this.typeaheadTags = this.cloneArray(this.existingTags);
+
         this.tagsFromValue();
 
         if (this.typeaheadAlwaysShow) {
@@ -255,7 +313,7 @@ export default {
 
     computed: {
         hideInputField() {
-            return (this.hideInputOnLimit && this.limit > 0 && this.tags.length >= this.limit);
+            return (this.hideInputOnLimit && this.limit > 0 && this.tags.length >= this.limit) || this.disabled;
         }
     },
 
@@ -290,6 +348,14 @@ export default {
 
                 this.$emit('change', newVal);
             }
+        },
+
+        existingTags(newVal) {
+            this.typeaheadTags.splice(0);
+
+            this.typeaheadTags = this.cloneArray(newVal);
+
+            this.searchTag();
         },
 
         tags() {
@@ -332,6 +398,8 @@ export default {
          * @returns void
          */
         tagFromInput(ignoreSearchResults = false) {
+            if (this.composing) return;
+
             // If we're choosing a tag from the search results
             if (this.searchResults.length && this.searchSelection >= 0 && !ignoreSearchResults) {
                 this.tagFromSearch(this.searchResults[this.searchSelection]);
@@ -345,23 +413,25 @@ export default {
                 if (!this.onlyExistingTags && text.length && this.validate(text)) {
                     this.input = '';
 
-                    // Determine if the inputted tag exists in the existingTags
+                    // Determine if the inputted tag exists in the typeagedTags
                     // array
                     let newTag = {
-                        key: '',
-                        value: text,
+                        [this.idField]: '',
+                        [this.textField]: text
                     };
 
                     const searchQuery = this.escapeRegExp(
                         this.caseSensitiveTags
-                            ? newTag.value
-                            : newTag.value.toLowerCase()
+                            ? newTag[this.textField]
+                            : newTag[this.textField].toLowerCase()
                     );
 
-                    for (let tag of this.existingTags) {
-                        const compareable = this.caseSensitiveTags
-                            ? tag.value
-                            : tag.value.toLowerCase();
+                    for (let tag of this.typeaheadTags) {
+                        const compareable = this.escapeRegExp(
+                            this.caseSensitiveTags
+                                ? tag[this.textField]
+                                : tag[this.textField].toLowerCase()
+                        );
 
                         if (searchQuery === compareable) {
                             newTag = Object.assign({}, tag);
@@ -409,9 +479,14 @@ export default {
          * Add/Select a tag
          *
          * @param tag
+         * @param force
          * @returns void | Boolean
          */
-        addTag(tag) {
+        addTag(tag, force = false) {
+            if (this.disabled && !force) {
+                return;
+            }
+
             if (!this.beforeAddingTag(tag)) {
                 return false;
             }
@@ -453,6 +528,10 @@ export default {
          * @returns void
          */
         removeTag(index) {
+            if (this.disabled) {
+                return;
+            }
+
             let tag = this.tags[index];
 
             if (!this.beforeRemovingTag(tag)) {
@@ -483,7 +562,10 @@ export default {
             }
 
             if (this.oldInput != this.input || (!this.searchResults.length && this.typeaheadActivationThreshold == 0) || this.typeaheadAlwaysShow || this.typeaheadShowOnFocus) {
-                this.searchResults = [];
+                if (!this.typeaheadUrl.length && !this.typeaheadCallback) {
+                    this.searchResults = [];
+                }
+
                 this.searchSelection = 0;
                 let input = this.input.trim();
 
@@ -494,14 +576,19 @@ export default {
                     );
 
                     // AJAX search
-                    if (this.typeaheadUrl.length > 0) {
-                        this.existingTags.splice();
+                    if (this.typeaheadCallback) {
+                        this.typeaheadCallback(searchQuery)
+                            .then((results) => {
+                                this.typeaheadTags = results;
+                            });
+                    } else if (this.typeaheadUrl.length > 0) {
+                        this.typeaheadTags.splice(0);
                         const xhttp = new XMLHttpRequest();
                         const that = this;
 
                         xhttp.onreadystatechange = function () {
                             if (this.readyState == 4 && this.status == 200) {
-                                that.existingTags = JSON.parse(xhttp.responseText);
+                                that.typeaheadTags = JSON.parse(xhttp.responseText);
 
                                 that.doSearch(searchQuery);
                             }
@@ -527,12 +614,15 @@ export default {
          * @return void
          */
         doSearch(searchQuery) {
-            for (let tag of this.existingTags) {
-                const compareable = this.caseSensitiveTags
-                    ? tag.value
-                    : tag.value.toLowerCase();
+            this.searchResults = [];
 
-                if (compareable.search(searchQuery) > -1 && ! this.tagSelected(tag)) {
+            for (let tag of this.typeaheadTags) {
+                const compareable = this.caseSensitiveTags
+                    ? tag[this.textField]
+                    : tag[this.textField].toLowerCase();
+                const ids = this.searchResults.map((res) => (res[this.idField]));
+
+                if (compareable.search(searchQuery) > -1 && ! this.tagSelected(tag) && ! ids.includes(tag[this.idField])) {
                     this.searchResults.push(tag);
                 }
             }
@@ -540,8 +630,8 @@ export default {
             // Sort the search results alphabetically
             if (this.sortSearchResults) {
                 this.searchResults.sort((a, b) => {
-                    if (a.value < b.value) return -1;
-                    if (a.value > b.value) return 1;
+                    if (a[this.textField] < b[this.textField]) return -1;
+                    if (a[this.textField] > b[this.textField]) return 1;
 
                     return 0;
                 });
@@ -643,7 +733,7 @@ export default {
                 this.clearTags();
 
                 for (let tag of tags) {
-                    this.addTag(tag);
+                    this.addTag(tag, true);
                 }
             } else {
                 if (this.tags.length == 0) {
@@ -670,15 +760,15 @@ export default {
             }
 
             const searchQuery = this.escapeRegExp(
-                this.caseSensitiveTags ? tag.value : tag.value.toLowerCase()
+                this.caseSensitiveTags ? tag[this.textField] : tag[this.textField].toLowerCase()
             );
 
             for (let selectedTag of this.tags) {
                 const compareable = this.caseSensitiveTags
-                    ? selectedTag.value
-                    : selectedTag.value.toLowerCase();
+                    ? selectedTag[this.textField]
+                    : selectedTag[this.textField].toLowerCase();
 
-                if (selectedTag.key === tag.key && this.escapeRegExp(compareable).length == searchQuery.length && compareable.search(searchQuery) > -1) {
+                if (selectedTag[this.idField] === tag[this.idField] && this.escapeRegExp(compareable).length == searchQuery.length && compareable.search(searchQuery) > -1) {
                     return true;
                 }
             }
@@ -763,6 +853,46 @@ export default {
 
             this.isActive = false;
         },
+
+        hiddenInputValue(tag) {
+            // Return all fields
+            if (!this.valueFields) {
+                return JSON.stringify(tag);
+            }
+
+            const fields = this.valueFields.replace(/\s/, '').split(',');
+
+            // A single field
+            if (fields.length === 1) {
+                return tag[fields[0]];
+            } else {
+                // Specified fields
+                return JSON.stringify(
+                    Object.assign(
+                        {},
+                        ...fields.map(field => ({ [field]: tag[field] }))
+                    )
+                );
+            }
+
+            return JSON.stringify(tag);
+        },
+
+        getDisplayField(tag) {
+            const hasDisplayField = this.displayField !== undefined
+                && this.displayField !== null
+                && tag[this.displayField] !== undefined
+                && tag[this.displayField] !== null
+                && tag[this.displayField] !== '';
+
+            return hasDisplayField
+                ? tag[this.displayField]
+                : tag[this.textField];
+        },
+
+        cloneArray(arr) {
+            return arr.map(el => Object.assign({}, el));
+        }
     }
 }
 </script>
